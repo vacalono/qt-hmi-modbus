@@ -542,6 +542,9 @@ QWidget* MainWindow::buildLogPanel()
     m_log = new QPlainTextEdit(box);
     m_log->setReadOnly(true);
     m_log->setMaximumBlockCount(800);
+    // 日志每来一帧就追加两行（TX/RX），10 Hz 下 30 分钟约 3.6 万次 append。
+    // 不关撤销栈的话 QTextDocument 会把每次编辑都记进 undo 历史 → 工作集一路涨。
+    m_log->setUndoRedoEnabled(false);
     m_log->setStyleSheet(QStringLiteral("font-family: Consolas, monospace;"));
     v->addWidget(m_log);
     return box;

@@ -106,13 +106,25 @@ def test_soak_no_leak_and_no_frame_loss(tmp_path):
     assert int(r["crc_errors"]) == 0
     assert csv_rows(r["csv"]) == frames, "CSV 行数与成功帧不一致（写盘丢了？）"
 
-    values = [v for _, v in samples if v]
-    if len(values) >= 4:
-        warm = values[len(values) // 5:]          # 丢掉预热段
-        drift = max(warm) - min(warm)
-        pct = drift / max(warm) * 100
-        print(f"内存：起 {_mb(values[0])} → 末 {_mb(values[-1])}，工作集漂移 {_mb(drift)}（{pct:.1f}%）")
-        assert drift < 32 * 1048576, f"内存漂移 {_mb(drift)}，疑似泄漏"
-        assert pct < 25, f"工作集漂移 {pct:.1f}%，疑似持续增长"
+    pts = [(ts, v) for ts, v in samples if v]
+    if len(pts) >= 6:
+        # 预热段（前 1/5 时长、至少 60 s）里 Qt 会涨字体/图元缓存，不能算泄漏；
+        # 之后看"斜率"：真泄漏是单调上升，缓存预热是一段台阶后持平。
+        warm_until = max(pts[0][0] + 60.0, pts[-1][0] / 5.0)
+        warm = [(ts, v) for ts, v in pts if ts >= warm_until]
+        if len(warm) < 4:
+            warm = pts[len(pts) // 5:]
+        xs = [ts for ts, _ in warm]
+        ys = [v for _, v in warm]
+        drift = max(ys) - min(ys)
+        pct = drift / max(ys) * 100
+        n = len(xs)
+        mx, my = sum(xs) / n, sum(ys) / n
+        denom = sum((x - mx) ** 2 for x in xs) or 1.0
+        slope_bpm = sum((x - mx) * (y - my) for x, y in zip(xs, ys)) / denom * 60.0 / 1048576
+        print(f"内存：全段 {_mb(pts[0][1])} → {_mb(pts[-1][1])}；预热后漂移 {_mb(drift)}（{pct:.1f}%），"
+              f"斜率 {slope_bpm:+.2f} MB/min")
+        assert drift < 32 * 1048576, f"预热后内存漂移 {_mb(drift)}（{pct:.1f}%），疑似泄漏"
+        assert slope_bpm < 0.5, f"内存斜率 {slope_bpm:+.2f} MB/min，持续增长疑似泄漏"
     else:
         print("警告：内存采样点不足，跳过内存断言")

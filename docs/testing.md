@@ -63,7 +63,9 @@ SOAK_SECONDS=1800 pytest tests/e2e/test_soak.py -m soak -v     # 30 分钟
 
 默认 `addopts = -m "not soak"`，所以普通 `pytest` 不会跑它；CI 里单独跑 3 分钟版（`SOAK_SECONDS=180`，实测 1804 帧 / 漂移 0.5 MB）。
 
-断言：帧数 ≥ 理论值 90%、超时 0、CRC 0、CSV 行数 = 成功帧数、**工作集漂移**（去掉预热段）< 32 MB 且 < 25%。内存读的是真进程工作集（Windows `GetProcessMemoryInfo`，Linux `/proc/<pid>/status`），不是拍脑袋估算。
+断言：帧数 ≥ 理论值 90%、超时 0、CRC 0、CSV 行数 = 成功帧数；内存看**预热之后的斜率**（最小二乘，< 0.5 MB/min）并以漂移 < 32 MB 为辅助。内存读的是真进程工作集（Windows `GetProcessMemoryInfo`，Linux `/proc/<pid>/status`）。
+
+**一次误报换来的教训**：第一版只写了 `max−min < 32 MB`，30 分钟那轮报出"漂移 58.8 MB"。加 10 分钟密集采样才看清形态——启动 93.8 MB → 峰值 94.9 MB → 2 分钟后回落到 63.2 MB（Windows 回收工作集）→ 之后 7 分钟只在 63.1–63.4 MB 之间动。**程序没泄漏，是判据把"先涨后落"当成了增长**（详见 `docs/bug-reports.md` BUG-004）。
 
 ## L3 · CI 门（GitHub Actions）
 

@@ -146,7 +146,7 @@ SIM_FAULT=slow    ./dist/device_sim.exe   # 每帧延迟 400 ms → 应答超时
 | 在线冒烟 | 8 s / 100 ms：帧数 ≥ 70、超时 0、CRC 错 0 |
 | 界面压力回归 | `--ui-load 95`：帧数仍 ≥ 70，且 `io_thread ≠ ui_thread` |
 | 离线核对 | 127 组 → `failed=7`（判定逻辑不能被改坏） |
-| 长跑 | 3 分钟 soak：帧数 ≥ 理论 90%、CSV 行数一致、工作集漂移 < 32 MB（CI 实测 1804/1800 帧，漂移 0.5 MB） |
+| 长跑 | 3 分钟 soak：帧数 ≥ 理论 90%、CSV 一致、预热后内存斜率 < 0.5 MB/min（CI 实测 1804/1800 帧） |
 | Linux 桌面跑 | xvfb 里真开窗口跑 6 s 并截图（不是只有 offscreen 无头） |
 | 产物 | 核对报告 + Linux 截图上传为 artifact |
 
@@ -158,7 +158,7 @@ Linux 上的实测（run 40638650022，整条采集链已在 I/O 线程）：单
 |---|---|---|---|
 | L1 单元（QtTest） | `tests/test_modbus.cpp` | 11 | CRC 标准值、帧布局、异常码、坏 CRC 拒绝、回显不一致、跨线程契约 |
 | L2b UI 交互（QtTest） | `tests/ui/test_ui.cpp` | 1 | 真点控件：连接→在线→切页签→跑 3×3 序列→断开→未连接 |
-| L2c 长跑（pytest soak） | `tests/e2e/test_soak.py` | 1 | 帧数≥理论 90%、0 超时、CSV 行数一致、工作集漂移 <32 MB |
+| L2c 长跑（pytest soak） | `tests/e2e/test_soak.py` | 1 | 帧数≥理论 90%、0 超时、CSV 行数一致、预热后内存斜率 <0.5 MB/min |
 | L2 端到端（pytest） | `tests/e2e/test_hmi_cli.py` | 10 | 采样节拍跟 `--interval` 走、首帧 ≤2 s、UI 饱和不掉帧、3×3 矩阵 9 组、丢帧→超时、坏帧→CRC 错、127 组判定分布、输入缺失非零退出 |
 | L3 CI 门 | `.github/workflows/ci.yml` | 7 步 | 每步都是硬断言，红即失败 |
 
