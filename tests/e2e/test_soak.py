@@ -116,15 +116,15 @@ def test_soak_no_leak_and_no_frame_loss(tmp_path):
             warm = pts[len(pts) // 5:]
         xs = [ts for ts, _ in warm]
         ys = [v for _, v in warm]
-        drift = max(ys) - min(ys)
-        pct = drift / max(ys) * 100
         n = len(xs)
         mx, my = sum(xs) / n, sum(ys) / n
         denom = sum((x - mx) ** 2 for x in xs) or 1.0
         slope_bpm = sum((x - mx) * (y - my) for x, y in zip(xs, ys)) / denom * 60.0 / 1048576
-        print(f"内存：全段 {_mb(pts[0][1])} → {_mb(pts[-1][1])}；预热后漂移 {_mb(drift)}（{pct:.1f}%），"
-              f"斜率 {slope_bpm:+.2f} MB/min")
-        assert drift < 32 * 1048576, f"预热后内存漂移 {_mb(drift)}（{pct:.1f}%），疑似泄漏"
+        print(f"内存：预热后区间 {_mb(min(ys))} – {_mb(max(ys))}，末值 {_mb(ys[-1])}，"
+              f"斜率 {slope_bpm:+.2f} MB/min（负值=回落，正常）")
+        # 只看"增长"：真泄漏是单调上升；工作集回落（负斜率）不该判红，
+        # max-min 会把 Windows 回收工作集误判成泄漏（BUG-004）
         assert slope_bpm < 0.5, f"内存斜率 {slope_bpm:+.2f} MB/min，持续增长疑似泄漏"
+        assert max(ys) < 512 * 1048576, f"预热后峰值 {_mb(max(ys))}，占用异常"
     else:
         print("警告：内存采样点不足，跳过内存断言")
