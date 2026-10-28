@@ -75,10 +75,24 @@ jobs:
           echo "$OUT" | grep -q "failed=7"
           head -20 /tmp/qc_report.md
 
-      - name: 上传核对报告
+      - name: Linux 桌面运行截图（xvfb）
+        run: |
+          sudo apt-get install -y --no-install-recommends xvfb
+          ./build/sim/device_sim &
+          SIM_PID=$!
+          sleep 1
+          xvfb-run -a -s "-screen 0 1280x800x24" ./build/app/hmi_app --smoke --seconds 6 --interval 100 --shot /tmp/hmi_linux.png
+          kill $SIM_PID || true
+          ls -l /tmp/hmi_linux.png
+          test -s /tmp/hmi_linux.png
+          file /tmp/hmi_linux.png
+
+      - name: 上传核对报告与截图
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: qc-report
-          path: /tmp/qc_report.md
+          name: qc-report-and-shot
+          path: |
+            /tmp/qc_report.md
+            /tmp/hmi_linux.png
           if-no-files-found: ignore
