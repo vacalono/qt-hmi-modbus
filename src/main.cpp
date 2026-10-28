@@ -115,6 +115,13 @@ int main(int argc, char* argv[])
 
     const int rc = app.exec();
 
+    // 退出前把还在队列里的样本事件排空：采集在 I/O 线程、落盘在 UI 线程，
+    // 直接 quit 会丢掉最后几帧（50 ms 周期时尤其明显），CSV 行数就对不上成功帧数了
+    for (int i = 0; i < 50; ++i) {
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::MetaCall);
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 5);
+    }
+
     QTextStream out(stdout);
     out << "smoke_result"
         << " ok_frames=" << w.okFrames()

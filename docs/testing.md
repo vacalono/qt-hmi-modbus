@@ -45,6 +45,26 @@ HMI_APP=build/app/hmi_app SIM_APP=build/sim/device_sim pytest tests/e2e -v
 
 现状：**10 passed**（Windows 本机 57 s；Linux CI 同样跑）。
 
+## L2b · UI 交互自动化（QtTest，`tests/ui/test_ui.cpp`）
+
+真的点控件，不调私有方法：`QTest::mouseClick` 点「连接」→ 等状态栏变「在线」→ 点页签来回切 → 点「开始序列」等 3×3 全部落盘 → 点「断开」等状态栏回「未连接」。
+
+- 关键控件加了 `objectName`（`connectButton` / `scanButton` / `mainTabs` / `stateLabel` / `intervalSpin`），测试用 `findChild` 拿；
+- 用例自带模拟样机（`SIM_APP` 或自动找 `dist/device_sim`），跑完必回收；
+- `QT_QPA_PLATFORM=offscreen` 下可跑（CI 用这种方式）。
+
+这条用例第一次跑就抓到一个真问题：**断开后状态栏停在「在线」**（引擎在 I/O 线程里异步销毁，`stop()` 的 `stateChanged` 来不及送到 UI），修法是断开分支里显式把状态栏落回「未连接」。
+
+## L2c · 长跑稳定性（soak，`tests/e2e/test_soak.py`）
+
+```bash
+SOAK_SECONDS=1800 pytest tests/e2e/test_soak.py -m soak -v     # 30 分钟
+```
+
+默认 `addopts = -m "not soak"`，所以普通 `pytest` 不会跑它；CI 里单独跑一个短版本。
+
+断言：帧数 ≥ 理论值 90%、超时 0、CRC 0、CSV 行数 = 成功帧数、**工作集漂移**（去掉预热段）< 32 MB 且 < 25%。内存读的是真进程工作集（Windows `GetProcessMemoryInfo`，Linux `/proc/<pid>/status`），不是拍脑袋估算。
+
 ## L3 · CI 门（GitHub Actions）
 
 每次 push 顺序跑：三个工程构建 → QtTest → 8 s 冒烟（帧 ≥ 70、0 超时、0 CRC）→ UI 压力回归（帧 ≥ 70 且 io_thread ≠ ui_thread）→ pytest 端到端 → 127 组离线核对 → xvfb 桌面截图。任一红即失败，产物（报告 + 截图 + junit）上传。

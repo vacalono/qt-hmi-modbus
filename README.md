@@ -156,6 +156,8 @@ Linux 上的实测（run 40638650022，整条采集链已在 I/O 线程）：单
 | 层 | 位置 | 数量 | 断言什么 |
 |---|---|---|---|
 | L1 单元（QtTest） | `tests/test_modbus.cpp` | 11 | CRC 标准值、帧布局、异常码、坏 CRC 拒绝、回显不一致、跨线程契约 |
+| L2b UI 交互（QtTest） | `tests/ui/test_ui.cpp` | 1 | 真点控件：连接→在线→切页签→跑 3×3 序列→断开→未连接 |
+| L2c 长跑（pytest soak） | `tests/e2e/test_soak.py` | 1 | 帧数≥理论 90%、0 超时、CSV 行数一致、工作集漂移 <32 MB |
 | L2 端到端（pytest） | `tests/e2e/test_hmi_cli.py` | 10 | 采样节拍跟 `--interval` 走、首帧 ≤2 s、UI 饱和不掉帧、3×3 矩阵 9 组、丢帧→超时、坏帧→CRC 错、127 组判定分布、输入缺失非零退出 |
 | L3 CI 门 | `.github/workflows/ci.yml` | 7 步 | 每步都是硬断言，红即失败 |
 
