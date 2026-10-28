@@ -82,6 +82,15 @@ jobs:
           python3 -m pip install --quiet --disable-pip-version-check pytest
           python3 -m pytest tests/e2e -v --junitxml=/tmp/e2e.xml
 
+      - name: 长跑稳定性（3 分钟版，断言帧数/CSV 一致/内存漂移）
+        env:
+          HMI_APP: ${{ github.workspace }}/build/app/hmi_app
+          SIM_APP: ${{ github.workspace }}/build/sim/device_sim
+          QT_QPA_PLATFORM: offscreen
+          SOAK_SECONDS: "180"
+        run: |
+          python3 -m pytest tests/e2e/test_soak.py -m soak -q -s
+
       - name: 离线核对（127 组，注入 7 处缺陷）
         env:
           QT_QPA_PLATFORM: offscreen
