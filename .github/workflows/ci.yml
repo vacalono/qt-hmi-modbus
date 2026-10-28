@@ -1,0 +1,83 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Qt 6 与构建依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            qt6-base-dev qt6-base-dev-tools qt6-serialport-dev qt6-charts-dev \
+            libgl1-mesa-dev
+          qmake6 --version
+
+      - name: 构建（上位机 / 模拟样机 / 单元测试）
+        run: |
+          mkdir -p build/app build/sim build/tests
+          (cd build/app   && qmake6 ../../hmi_app.pro          CONFIG+=release && make -j"$(nproc)")
+          (cd build/sim   && qmake6 ../../sim/device_sim.pro   CONFIG+=release && make -j"$(nproc)")
+          (cd build/tests && qmake6 ../../tests/tests.pro      CONFIG+=release && make -j"$(nproc)")
+
+      - name: 单元测试（协议 + 跨线程回归）
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ./build/tests/tst_modbus -o -,txt
+
+      - name: 在线采集冒烟（8 s / 100 ms）
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          ./build/sim/device_sim &
+          SIM_PID=$!
+          sleep 1
+          OUT=$(./build/app/hmi_app --smoke --seconds 8 --interval 100)
+          kill $SIM_PID || true
+          echo "$OUT"
+          FRAMES=$(echo "$OUT" | sed -n 's/.*ok_frames=\([0-9]*\).*/\1/p')
+          echo "frames=$FRAMES"
+          test -n "$FRAMES" && test "$FRAMES" -ge 50
+          echo "$OUT" | grep -q "timeouts=0"
+          echo "$OUT" | grep -q "crc_errors=0"
+
+      - name: 界面压力回归（UI 忙等 95 ms，I/O 线程不能掉帧）
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          ./build/sim/device_sim &
+          SIM_PID=$!
+          sleep 1
+          OUT=$(./build/app/hmi_app --smoke --seconds 8 --interval 100 --ui-load 95)
+          kill $SIM_PID || true
+          echo "$OUT"
+          FRAMES=$(echo "$OUT" | sed -n 's/.*ok_frames=\([0-9]*\).*/\1/p')
+          IO=$(echo "$OUT" | sed -n 's/.*io_thread=\([0-9]*\).*/\1/p')
+          UI=$(echo "$OUT" | sed -n 's/.*ui_thread=\([0-9]*\).*/\1/p')
+          test -n "$FRAMES" && test "$FRAMES" -ge 50
+          test "$IO" != "$UI"
+
+      - name: 离线核对（127 组，注入 7 处缺陷）
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          OUT=$(./build/app/hmi_app --check testdata/export_5devices_127.csv --report /tmp/qc_report.md)
+          echo "$OUT"
+          echo "$OUT" | grep -q "total=127"
+          echo "$OUT" | grep -q "failed=7"
+          head -20 /tmp/qc_report.md
+
+      - name: 上传核对报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qc-report
+          path: /tmp/qc_report.md
+          if-no-files-found: ignore

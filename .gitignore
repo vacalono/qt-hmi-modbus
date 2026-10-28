@@ -1,0 +1,19 @@
+# build artifacts
+out/
+build/
+*.o
+*.exe.bak
+Makefile
+Makefile.Release
+Makefile.Debug
+.qmake.stash
+object_script.*
+
+# runtime output
+logs/
+*.csv
+!testdata/*.csv
+device_sim.log
+
+# 打包产物（含 Qt DLL，58 MB，不入库；本地用 windeployqt 生成）
+dist/
