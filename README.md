@@ -151,6 +151,21 @@ SIM_FAULT=slow    ./dist/device_sim.exe   # 每帧延迟 400 ms → 应答超时
 
 Linux 上的实测（run 40638650022，整条采集链已在 I/O 线程）：单元测试 **11 passed / 0 failed**；冒烟 **83 帧 / 8 s**、0 超时；UI 忙等 95 ms 时 **79 帧**；离线核对 **127 → 120 / 7**。
 
+## 测试（三层，详见 `docs/testing.md`）
+
+| 层 | 位置 | 数量 | 断言什么 |
+|---|---|---|---|
+| L1 单元（QtTest） | `tests/test_modbus.cpp` | 11 | CRC 标准值、帧布局、异常码、坏 CRC 拒绝、回显不一致、跨线程契约 |
+| L2 端到端（pytest） | `tests/e2e/test_hmi_cli.py` | 10 | 采样节拍跟 `--interval` 走、首帧 ≤2 s、UI 饱和不掉帧、3×3 矩阵 9 组、丢帧→超时、坏帧→CRC 错、127 组判定分布、输入缺失非零退出 |
+| L3 CI 门 | `.github/workflows/ci.yml` | 7 步 | 每步都是硬断言，红即失败 |
+
+```bash
+pip install pytest
+pytest tests/e2e -v          # 本机：自动找 dist/ 或 out/app/release/ 的 exe
+```
+
+**缺陷记录**：`docs/bug-reports.md` —— 三个真实踩过的 bug（在途请求槽缺失、QTimer 跨线程导致启动卡 3.5 s、UI 线程拖慢采集），每条都写了复现步骤、根因、修复和对应回归用例。
+
 ## 设计决策（面试会被问到的）
 
 1. **为什么用 RTU over TCP 演示**：本机没有 com0com 虚拟串口对，串口通道无法自测；Modbus RTU 帧与传输无关，塞进 TCP 就能验证解析/超时/重连。现场把 `ITransport` 换成 `SerialTransport` 即可，上层零改动。（串口实现已写好，但未接真实设备验证。）
