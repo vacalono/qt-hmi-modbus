@@ -1,5 +1,7 @@
 # qt-hmi-modbus · CT 样机测试上位机（C++/Qt）
 
+[![ci](https://github.com/vacalono/qt-hmi-modbus/actions/workflows/ci.yml/badge.svg)](https://github.com/vacalono/qt-hmi-modbus/actions/workflows/ci.yml)
+
 面向**医疗设备（CT）新机图像质量测试**的上位机：两条工作流各占一个页签 —— **在线采集**（kV / mA 矩阵下发 → 周期读回球管温度、剂量率、校准片偏移 → 显示/曲线/落盘）与**离线核对**（导入导出的测试数据 → 按均匀性/噪声判定 → 标红不合格 → 导出核对报告）。
 配套一个可注入故障的**模拟下位机**（Modbus RTU over TCP），没有硬件也能完整跑通采集、异常与恢复。
 
@@ -133,6 +135,21 @@ SIM_FAULT=slow    ./dist/device_sim.exe   # 每帧延迟 400 ms → 应答超时
 | UI 线程饱和 200 ms 忙等（`--ui-load 200`） | 6 s **31 帧**（节拍被 UI 定时器拖慢，属预期），**仍 0 超时、0 CRC 错** |
 | 单元测试 | **11 passed / 0 failed**（Qt 6.8.3 / GCC 13.1.0）；其中 2 个是跨线程回归：I/O 线程必须不同于 UI 线程、字节双向跨线程不丢 |
 
+## 持续集成（GitHub Actions · Ubuntu 24.04 / Qt 6.4.2）
+
+`.github/workflows/ci.yml` 每次 push 全跑一遍，绿了才算改完：
+
+| 步骤 | 断言 |
+|---|---|
+| 构建 | 上位机 / 模拟样机 / 单元测试三个 qmake 工程都能编过（Linux + Qt 6.4.2，与 Windows 的 6.8.3 双环境） |
+| 单元测试 | `tst_modbus` 全通过，且含两个跨线程用例（I/O 线程 ≠ UI 线程、字节双向跨线程） |
+| 在线冒烟 | 8 s / 100 ms：帧数 ≥ 50、超时 0、CRC 错 0 |
+| 界面压力回归 | `--ui-load 95`：帧数仍 ≥ 50，且 `io_thread ≠ ui_thread` |
+| 离线核对 | 127 组 → `failed=7`（判定逻辑不能被改坏） |
+| 产物 | 核对报告上传为 artifact |
+
+Linux 上的实测（run 40637585996）：单元测试 **11 passed / 0 failed**；冒烟 **81 帧 / 8 s**、0 超时；UI 忙等 95 ms 时 **78 帧**；离线核对 **127 → 120 / 7**。
+
 ## 设计决策（面试会被问到的）
 
 1. **为什么用 RTU over TCP 演示**：本机没有 com0com 虚拟串口对，串口通道无法自测；Modbus RTU 帧与传输无关，塞进 TCP 就能验证解析/超时/重连。现场把 `ITransport` 换成 `SerialTransport` 即可，上层零改动。（串口实现已写好，但未接真实设备验证。）
@@ -161,6 +178,7 @@ src/ui/MainWindow.*             界面与交互（在线采集 / 离线核对两
 sim/device_sim.cpp              模拟样机（含故障注入）
 tests/test_modbus.cpp           QtTest 用例
 tools/gen_sample_data.py        生成 127 组样例导出数据（含注入缺陷）
+.github/workflows/ci.yml        持续集成：构建 + 单测 + 冒烟 + 压力回归 + 离线核对
 testdata/export_5devices_127.csv 样例数据
 docs/qc_report.md               离线核对报告样例
 dist/                           已打包（含 Qt DLL）可直接运行
@@ -173,6 +191,7 @@ dist/                           已打包（含 Qt DLL）可直接运行
 - 离线核对只支持 CSV（不解析 Excel/xlsx）；判定阈值手工设，没有从标准文件读阈值；
 - 没有历史回放、报警阈值、用户权限（真实工控软件必备，本项目未做）；
 - 未接工业相机 SDK、运动控制卡、PLC；
+- Linux 上只做到「编译 + 无头跑通（offscreen）」，没有打 Linux 安装包、也没做桌面环境下的截图验证；
 - 只有**传输层**在 I/O 线程，轮询节拍/解析/落盘仍在 UI 线程；UI 完全饱和时节拍会下降（见实测表）；
 - 模拟器物理量是简化模型（温度一阶惯性、剂量率与功率近似成正比），不是真实设备的标定曲线；`testdata/` 里的 127 组是**合成数据**，不是真实测量值。
 
