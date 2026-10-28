@@ -26,6 +26,8 @@ jobs:
           (cd build/app   && qmake6 ../../hmi_app.pro          CONFIG+=release && make -j"$(nproc)")
           (cd build/sim   && qmake6 ../../sim/device_sim.pro   CONFIG+=release && make -j"$(nproc)")
           (cd build/tests && qmake6 ../../tests/tests.pro      CONFIG+=release && make -j"$(nproc)")
+          mkdir -p build/ui
+          (cd build/ui    && qmake6 ../../tests/ui/tests_ui.pro CONFIG+=release && make -j"$(nproc)")
 
       - name: 单元测试（协议 + 跨线程回归）
         env:
@@ -64,6 +66,12 @@ jobs:
           UI=$(echo "$OUT" | sed -n 's/.*ui_thread=\([0-9]*\).*/\1/p')
           test -n "$FRAMES" && test "$FRAMES" -ge 70
           test "$IO" != "$UI"
+
+      - name: UI 交互自动化（点连接 / 切页签 / 跑序列 / 断开）
+        env:
+          QT_QPA_PLATFORM: offscreen
+          SIM_APP: ${{ github.workspace }}/build/sim/device_sim
+        run: ./build/ui/tst_ui -o -,txt
 
       - name: 接口自动化（pytest · CLI 黑盒，10 例）
         env:

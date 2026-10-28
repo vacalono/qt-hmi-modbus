@@ -51,6 +51,7 @@ MainWindow::MainWindow(QWidget* parent)
     tabs->addTab(buildOfflineTab(), QStringLiteral("离线核对（导入导出数据）"));
     setCentralWidget(tabs);
     m_tabs = tabs;
+    m_tabs->setObjectName(QStringLiteral("mainTabs"));          // UI 自动化用
 
     m_counterLabel = new QLabel(this);
     statusBar()->addPermanentWidget(m_counterLabel);
@@ -288,13 +289,16 @@ QWidget* MainWindow::buildConnectPanel()
     m_slaveSpin->setPrefix(QStringLiteral("从站 "));
 
     m_intervalSpin = new QSpinBox(box);
+    m_intervalSpin->setObjectName(QStringLiteral("intervalSpin"));
     m_intervalSpin->setRange(50, 5000);
     m_intervalSpin->setSingleStep(50);
     m_intervalSpin->setValue(300);
     m_intervalSpin->setSuffix(QStringLiteral(" ms"));
 
     m_connectBtn = new QPushButton(QStringLiteral("连接"), box);
+    m_connectBtn->setObjectName(QStringLiteral("connectButton"));   // UI 自动化用
     m_stateLabel = new QLabel(QStringLiteral("未连接"), box);
+    m_stateLabel->setObjectName(QStringLiteral("stateLabel"));
     m_stateLabel->setMinimumWidth(220);
 
     h->addWidget(new QLabel(QStringLiteral("通道"), box));
@@ -404,6 +408,7 @@ QWidget* MainWindow::buildWritePanel()
     m_writeValueSpin->setRange(0, 65535);
     m_writeValueSpin->setValue(120);
     m_writeBtn = new QPushButton(QStringLiteral("下发"), box);
+    m_writeBtn->setObjectName(QStringLiteral("writeButton"));
 
     row->addWidget(m_writeAddrSpin);
     row->addWidget(new QLabel(QStringLiteral("="), box));
@@ -440,7 +445,9 @@ QWidget* MainWindow::buildScanPanel()
     m_maList->setMaximumWidth(160);
 
     m_scanBtn = new QPushButton(QStringLiteral("开始序列"), box);
+    m_scanBtn->setObjectName(QStringLiteral("scanButton"));
     m_scanStopBtn = new QPushButton(QStringLiteral("停止"), box);
+    m_scanStopBtn->setObjectName(QStringLiteral("scanStopButton"));
     m_scanStopBtn->setEnabled(false);
     m_scanBar = new QProgressBar(box);
     m_scanBar->setRange(0, 100);
