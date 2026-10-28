@@ -297,7 +297,7 @@ QWidget* MainWindow::buildConnectPanel()
 
     m_connectBtn = new QPushButton(QStringLiteral("连接"), box);
     m_connectBtn->setObjectName(QStringLiteral("connectButton"));   // UI 自动化用
-    m_stateLabel = new QLabel(QStringLiteral("未连接"), box);
+    m_stateLabel = new QLabel(QStringLiteral("● 未连接"), box);
     m_stateLabel->setObjectName(QStringLiteral("stateLabel"));
     m_stateLabel->setMinimumWidth(220);
 
@@ -613,6 +613,9 @@ void MainWindow::onConnectClicked()
         }
         delete m_channel;
         m_channel = nullptr;
+        // 引擎是异步销毁的，stop() 的 stateChanged 可能来不及送到 UI，
+        // 这里直接把状态栏落回"未连接"，避免界面停在"在线"（UI 自动化用例会抓这个）
+        m_stateLabel->setText(QStringLiteral("● 未连接"));
         m_connectBtn->setText(QStringLiteral("连接"));
         setConfigEnabled(true);
         return;

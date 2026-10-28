@@ -99,7 +99,7 @@ private slots:
         QVERIFY2(connectBtn && stateLabel && tabs && scanBtn, "关键控件缺少 objectName，UI 自动化拿不到");
 
         QCOMPARE(connectBtn->text(), QStringLiteral("连接"));
-        QCOMPARE(stateLabel->text(), QStringLiteral("未连接"));
+        QVERIFY(stateLabel->text().contains(QStringLiteral("未连接")));
 
         // ① 点「连接」
         QTest::mouseClick(connectBtn, Qt::LeftButton);
@@ -120,7 +120,7 @@ private slots:
         // ④ 点「断开」，状态回落
         QTest::mouseClick(connectBtn, Qt::LeftButton);
         QTRY_VERIFY_WITH_TIMEOUT(connectBtn->text() == QStringLiteral("连接"), 10000);
-        QVERIFY(!stateLabel->text().contains(QStringLiteral("在线")));
+        QTRY_VERIFY_WITH_TIMEOUT(stateLabel->text().contains(QStringLiteral("未连接")), 5000);
     }
 
 private:
