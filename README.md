@@ -146,6 +146,7 @@ SIM_FAULT=slow    ./dist/device_sim.exe   # 每帧延迟 400 ms → 应答超时
 | 在线冒烟 | 8 s / 100 ms：帧数 ≥ 70、超时 0、CRC 错 0 |
 | 界面压力回归 | `--ui-load 95`：帧数仍 ≥ 70，且 `io_thread ≠ ui_thread` |
 | 离线核对 | 127 组 → `failed=7`（判定逻辑不能被改坏） |
+| 长跑 | 3 分钟 soak：帧数 ≥ 理论 90%、CSV 行数一致、工作集漂移 < 32 MB（CI 实测 1804/1800 帧，漂移 0.5 MB） |
 | Linux 桌面跑 | xvfb 里真开窗口跑 6 s 并截图（不是只有 offscreen 无头） |
 | 产物 | 核对报告 + Linux 截图上传为 artifact |
 

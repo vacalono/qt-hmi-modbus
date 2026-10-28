@@ -61,7 +61,7 @@ HMI_APP=build/app/hmi_app SIM_APP=build/sim/device_sim pytest tests/e2e -v
 SOAK_SECONDS=1800 pytest tests/e2e/test_soak.py -m soak -v     # 30 分钟
 ```
 
-默认 `addopts = -m "not soak"`，所以普通 `pytest` 不会跑它；CI 里单独跑一个短版本。
+默认 `addopts = -m "not soak"`，所以普通 `pytest` 不会跑它；CI 里单独跑 3 分钟版（`SOAK_SECONDS=180`，实测 1804 帧 / 漂移 0.5 MB）。
 
 断言：帧数 ≥ 理论值 90%、超时 0、CRC 0、CSV 行数 = 成功帧数、**工作集漂移**（去掉预热段）< 32 MB 且 < 25%。内存读的是真进程工作集（Windows `GetProcessMemoryInfo`，Linux `/proc/<pid>/status`），不是拍脑袋估算。
 
