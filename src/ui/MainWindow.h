@@ -57,6 +57,8 @@ public:
     int qcFailed() const { return m_qc.summary().failed; }
     void selectTab(int index);
     quintptr ioThreadId() const;
+    quint64 engineTicks() const;
+    double engineLatency() const;
 
 private slots:
     void onConnectClicked();

@@ -1,4 +1,5 @@
 #include "core/PollEngine.h"
+#include "transport/IoWorker.h"
 #include "transport/TransportChannel.h"
 
 #include <QDateTime>
@@ -6,25 +7,42 @@
 PollEngine::PollEngine(TransportChannel* transport, QObject* parent)
     : QObject(parent), m_transport(transport)
 {
-    m_tick.setTimerType(Qt::PreciseTimer);
-    connect(&m_tick, &QTimer::timeout, this, &PollEngine::onTick);
+    // 引擎跑在 I/O 线程里（与 IoWorker 同线程）：字节到达是直连，不经过 UI 线程
+    if (IoWorker* worker = m_transport->ioWorker()) {
+        connect(worker, &IoWorker::bytesReceived, this, &PollEngine::onBytes);
+        connect(worker, &IoWorker::errorOccurred, this, &PollEngine::onTransportError);
+        connect(worker, &IoWorker::closedByPeer, this, &PollEngine::onTransportClosed);
+        connect(worker, &IoWorker::connected, this, &PollEngine::onConnected);
+    }
+}
 
-    m_deadline.setSingleShot(true);
-    connect(&m_deadline, &QTimer::timeout, this, &PollEngine::onTimeout);
+void PollEngine::initTimers()
+{
+    if (m_tick) {
+        return;   // 已在引擎线程建好
+    }
+    m_tick = new QTimer(this);
+    m_tick->setTimerType(Qt::PreciseTimer);
+    connect(m_tick, &QTimer::timeout, this, &PollEngine::onTick);
 
-    m_reconnect.setSingleShot(true);
-    connect(&m_reconnect, &QTimer::timeout, this, [this]() {
+    m_deadline = new QTimer(this);
+    m_deadline->setSingleShot(true);
+    connect(m_deadline, &QTimer::timeout, this, &PollEngine::onTimeout);
+
+    m_reconnect = new QTimer(this);
+    m_reconnect->setSingleShot(true);
+    connect(m_reconnect, &QTimer::timeout, this, [this]() {
         enterState(State::Connecting, QStringLiteral("退避结束，重连中"));
+        m_connectClock.start();
+        m_connectWatch->start(3000);
         if (!m_transport->open()) {
             scheduleReconnect();
         }
     });
 
-    connect(&m_connectWatch, &QTimer::timeout, this, &PollEngine::onConnectWatch);
-
-    connect(m_transport, &TransportChannel::bytesReceived, this, &PollEngine::onBytes);
-    connect(m_transport, &TransportChannel::errorOccurred, this, &PollEngine::onTransportError);
-    connect(m_transport, &TransportChannel::closed, this, &PollEngine::onTransportClosed);
+    m_connectWatch = new QTimer(this);
+    m_connectWatch->setSingleShot(true);
+    connect(m_connectWatch, &QTimer::timeout, this, &PollEngine::onConnectWatch);
 }
 
 QString PollEngine::stateText() const
@@ -41,6 +59,11 @@ QString PollEngine::stateText() const
 
 void PollEngine::start()
 {
+    if (!inOwnThread()) {   // 从 UI 线程调用：投递到引擎线程再执行
+        QMetaObject::invokeMethod(this, [this]() { start(); }, Qt::QueuedConnection);
+        return;
+    }
+    initTimers();
     m_rx.clear();
     m_writeQueue.clear();
     m_pendingWrite = false;
@@ -48,46 +71,57 @@ void PollEngine::start()
     m_failStreak = 0;
     m_backoffMs = 500;
     enterState(State::Connecting, QStringLiteral("开始连接 %1").arg(m_transport->describe()));
+    m_connectClock.start();
     if (!m_transport->open()) {
         scheduleReconnect();
         return;
     }
-    // 串口 open() 是同步的；TCP 是异步的，所以统一用一个短周期观察 isOpen()
-    m_connectClock.start();
-    m_connectWatch.start(50);
+    m_connectWatch->start(3000);   // 串口会立刻回 connected，TCP 要等
+}
+
+void PollEngine::onConnected()
+{
+    if (m_state != State::Connecting && m_state != State::Backoff) {
+        return;
+    }
+    m_connectWatch->stop();
+    enterState(State::Online, QStringLiteral("已连接 %1").arg(m_transport->describe()));
+    m_tick->start(m_intervalMs);
+    m_failStreak = 0;
 }
 
 void PollEngine::onConnectWatch()
 {
     if (m_state != State::Connecting) {
-        m_connectWatch.stop();
         return;
     }
-    if (m_transport->isOpen()) {
-        m_connectWatch.stop();
-        enterState(State::Online, QStringLiteral("已连接 %1").arg(m_transport->describe()));
-        m_tick.start(m_intervalMs);
-        return;
-    }
-    if (m_connectClock.elapsed() > 3000) {
-        m_connectWatch.stop();
-        enterState(State::Backoff, QStringLiteral("连接超时（3 s）"));
-        scheduleReconnect();
-    }
+    enterState(State::Backoff, QStringLiteral("连接超时（3 s）"));
+    scheduleReconnect();
 }
 
 void PollEngine::stop()
 {
-    m_tick.stop();
-    m_deadline.stop();
-    m_reconnect.stop();
-    m_connectWatch.stop();
+    if (!inOwnThread()) {
+        QMetaObject::invokeMethod(this, [this]() { stop(); }, Qt::QueuedConnection);
+        return;
+    }
+    if (m_tick) {
+        m_tick->stop();
+        m_deadline->stop();
+        m_reconnect->stop();
+        m_connectWatch->stop();
+    }
     m_transport->close();
     enterState(State::Stopped, QStringLiteral("已停止采集"));
 }
 
 bool PollEngine::enqueueWrite(uint16_t addr, uint16_t value)
 {
+    if (!inOwnThread()) {
+        QMetaObject::invokeMethod(this, [this, addr, value]() { enqueueWrite(addr, value); },
+                                  Qt::QueuedConnection);
+        return true;   // 入队是乐观的：真正的失败由 writeFinished 回来
+    }
     if (m_state != State::Online) {
         return false;
     }
@@ -97,6 +131,7 @@ bool PollEngine::enqueueWrite(uint16_t addr, uint16_t value)
 
 void PollEngine::onTick()
 {
+    ++m_ticks;
     if (m_state != State::Online || m_inFlight) {
         return;   // 有在途请求时不再发新请求，保证一问一答
     }
@@ -107,6 +142,7 @@ void PollEngine::sendNext()
 {
     m_rx.clear();
     m_inFlight = true;
+    m_requestClock.start();
     if (!m_writeQueue.isEmpty()) {
         const auto job = m_writeQueue.dequeue();
         m_pendingWrite = true;
@@ -116,7 +152,7 @@ void PollEngine::sendNext()
         emit frameLogged(QStringLiteral("TX"), frame,
                          QStringLiteral("写寄存器 %1 = %2").arg(job.first).arg(job.second));
         m_transport->write(frame);
-        m_deadline.start(m_timeoutMs);
+        m_deadline->start(m_timeoutMs);
         return;
     }
     m_pendingWrite = false;
@@ -124,7 +160,7 @@ void PollEngine::sendNext()
     emit frameLogged(QStringLiteral("TX"), frame,
                      QStringLiteral("读寄存器 %1..%2").arg(m_regBase).arg(m_regBase + m_regCount - 1));
     m_transport->write(frame);
-    m_deadline.start(m_timeoutMs);
+    m_deadline->start(m_timeoutMs);
 }
 
 void PollEngine::onBytes(const QByteArray& data)
@@ -136,7 +172,8 @@ void PollEngine::onBytes(const QByteArray& data)
     }
     const QByteArray frame = m_rx.left(expected);
     m_rx.remove(0, expected);
-    m_deadline.stop();
+    m_deadline->stop();
+    m_lastLatencyMs = static_cast<double>(m_requestClock.elapsed());
     if (m_pendingWrite) {
         handleWriteResponse(frame);
     } else {
@@ -192,14 +229,14 @@ void PollEngine::failAttempt(const QString& why)
         return;   // 连续 3 次失败才判定断线，避免偶发丢帧就重连
     }
     enterState(State::Backoff, QStringLiteral("连续 3 次失败：%1").arg(why));
-    m_tick.stop();
+    m_tick->stop();
     m_transport->close();
     scheduleReconnect();
 }
 
 void PollEngine::scheduleReconnect()
 {
-    m_reconnect.start(m_backoffMs);
+    m_reconnect->start(m_backoffMs);
     m_backoffMs = qMin(m_backoffMs * 2, 8000);   // 0.5s → 1s → 2s → 4s → 8s 封顶
 }
 
@@ -213,7 +250,9 @@ void PollEngine::onTransportError(const QString& message)
         ++m_failStreak;
         if (m_failStreak >= 3) {
             enterState(State::Backoff, message);
-            m_tick.stop();
+            if (m_tick) {
+                m_tick->stop();
+            }
             scheduleReconnect();
         }
     }
@@ -225,7 +264,9 @@ void PollEngine::onTransportClosed()
         return;
     }
     enterState(State::Backoff, QStringLiteral("连接被对端关闭"));
-    m_tick.stop();
+    if (m_tick) {
+        m_tick->stop();
+    }
     scheduleReconnect();
 }
 

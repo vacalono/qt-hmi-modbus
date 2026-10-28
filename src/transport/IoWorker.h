@@ -2,6 +2,7 @@
 
 #include <QObject>
 #include <QString>
+#include <QTimer>
 #include <memory>
 
 class ITransport;
@@ -21,6 +22,7 @@ public:
     void configureSerial(const QString& portName, int baud);
 
     quintptr ioThreadId() const { return m_ioThreadId; }
+    bool isConnected() const { return m_connected; }
 
 public slots:
     void open();
@@ -28,7 +30,8 @@ public slots:
     void writeData(const QByteArray& data);
 
 signals:
-    void opened();
+    void opened();                              // open() 被接受（TCP 此时可能还没连上）
+    void connected();                            // 真的连上了（串口 open 成功 / TCP connected）
     void closedByPeer();
     void bytesReceived(const QByteArray& data);
     void errorOccurred(const QString& message);
@@ -37,10 +40,12 @@ private:
     void setupTransport();
 
     std::unique_ptr<ITransport> m_transport;
+    QTimer* m_watch = nullptr;       // 等异步连接（TCP）落地；必须在 I/O 线程里创建（QTimer 归属运行它的线程）
     bool m_serial = false;
     QString m_host;
     quint16 m_port = 15020;
     QString m_portName;
     int m_baud = 115200;
     quintptr m_ioThreadId = 0;
+    bool m_connected = false;
 };

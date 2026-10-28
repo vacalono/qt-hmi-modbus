@@ -12,7 +12,8 @@ SOURCES += \
     ../src/transport/TcpTransport.cpp \
     ../src/transport/SerialTransport.cpp \
     ../src/transport/IoWorker.cpp \
-    ../src/transport/TransportChannel.cpp
+    ../src/transport/TransportChannel.cpp \
+    ../src/core/PollEngine.cpp
 
 HEADERS += \
     ../src/protocol/ModbusFrame.h \
@@ -20,4 +21,5 @@ HEADERS += \
     ../src/transport/TcpTransport.h \
     ../src/transport/SerialTransport.h \
     ../src/transport/IoWorker.h \
-    ../src/transport/TransportChannel.h
+    ../src/transport/TransportChannel.h \
+    ../src/core/PollEngine.h

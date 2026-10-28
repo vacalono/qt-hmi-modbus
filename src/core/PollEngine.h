@@ -4,9 +4,11 @@
 
 #include <QObject>
 #include <QElapsedTimer>
+#include <QThread>
 #include <QQueue>
 #include <QTimer>
 #include <QVector>
+#include <atomic>
 #include <cstdint>
 
 class TransportChannel;
@@ -28,16 +30,22 @@ public:
     void setIntervalMs(int ms)              { m_intervalMs = ms; }
     void setResponseTimeoutMs(int ms)       { m_timeoutMs = ms; }
 
+    // 这三个可以在任意线程调：若调用者不是引擎所在线程，会自动投递过去
+public slots:
     void start();
     void stop();
     bool enqueueWrite(uint16_t addr, uint16_t value);
 
+public:
+
     State state() const { return m_state; }
     QString stateText() const;
-    quint64 okFrames() const   { return m_okFrames; }
-    quint64 timeouts() const   { return m_timeouts; }
-    quint64 crcErrors() const  { return m_crcErrors; }
-    quint64 retries() const    { return m_retryCount; }
+    quint64 okFrames() const   { return m_okFrames.load(std::memory_order_relaxed); }
+    quint64 timeouts() const   { return m_timeouts.load(std::memory_order_relaxed); }
+    quint64 crcErrors() const  { return m_crcErrors.load(std::memory_order_relaxed); }
+    quint64 retries() const    { return m_retryCount.load(std::memory_order_relaxed); }
+    double lastPollLatencyMs() const { return m_lastLatencyMs; }
+    quint64 ticks() const { return m_ticks.load(std::memory_order_relaxed); }
 
 signals:
     void sample(const QVector<uint16_t>& regs, qint64 timestampMs);
@@ -47,6 +55,7 @@ signals:
 
 private slots:
     void onTick();
+    void onConnected();
     void onConnectWatch();
     void onBytes(const QByteArray& data);
     void onTimeout();
@@ -54,6 +63,8 @@ private slots:
     void onTransportClosed();
 
 private:
+    void initTimers();
+    bool inOwnThread() const { return QThread::currentThread() == thread(); }
     void enterState(State s, const QString& detail);
     void sendNext();
     void handleReadResponse(const QByteArray& frame);
@@ -62,11 +73,13 @@ private:
     void scheduleReconnect();
 
     TransportChannel* m_transport = nullptr;
-    QTimer m_tick;
-    QTimer m_deadline;      // 单次请求的应答超时
-    QTimer m_reconnect;     // 断线后的退避重连
-    QTimer m_connectWatch;  // 等待 transport 真正连上（异步连接）
+    // 定时器在 start() 时于引擎所在线程创建（QTimer 必须属于运行它的线程）
+    QTimer* m_tick = nullptr;
+    QTimer* m_deadline = nullptr;      // 单次请求的应答超时
+    QTimer* m_reconnect = nullptr;     // 断线后的退避重连
+    QTimer* m_connectWatch = nullptr;  // 等待 transport 真正连上（最多 3 s）
     QElapsedTimer m_connectClock;
+    QElapsedTimer m_requestClock;
 
     uint8_t  m_slave = 1;
     uint16_t m_regBase = 0;
@@ -83,11 +96,13 @@ private:
     uint16_t m_pendingValue = 0;
     QQueue<QPair<uint16_t, uint16_t>> m_writeQueue;
 
-    int m_retryCount = 0;
     int m_backoffMs = 500;
     int m_failStreak = 0;
 
-    quint64 m_okFrames = 0;
-    quint64 m_timeouts = 0;
-    quint64 m_crcErrors = 0;
+    std::atomic<quint64> m_okFrames{0};
+    std::atomic<quint64> m_timeouts{0};
+    std::atomic<quint64> m_crcErrors{0};
+    std::atomic<quint64> m_retryCount{0};
+    std::atomic<quint64> m_ticks{0};
+    double m_lastLatencyMs = 0.0;
 };

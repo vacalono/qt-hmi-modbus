@@ -44,7 +44,8 @@ jobs:
           echo "$OUT"
           FRAMES=$(echo "$OUT" | sed -n 's/.*ok_frames=\([0-9]*\).*/\1/p')
           echo "frames=$FRAMES"
-          test -n "$FRAMES" && test "$FRAMES" -ge 50
+          # 起手 3.5 s 才出第一帧的线程 bug 会把这数打到 45，所以门槛设在 70
+          test -n "$FRAMES" && test "$FRAMES" -ge 70
           echo "$OUT" | grep -q "timeouts=0"
           echo "$OUT" | grep -q "crc_errors=0"
 
@@ -61,7 +62,7 @@ jobs:
           FRAMES=$(echo "$OUT" | sed -n 's/.*ok_frames=\([0-9]*\).*/\1/p')
           IO=$(echo "$OUT" | sed -n 's/.*io_thread=\([0-9]*\).*/\1/p')
           UI=$(echo "$OUT" | sed -n 's/.*ui_thread=\([0-9]*\).*/\1/p')
-          test -n "$FRAMES" && test "$FRAMES" -ge 50
+          test -n "$FRAMES" && test "$FRAMES" -ge 70
           test "$IO" != "$UI"
 
       - name: 离线核对（127 组，注入 7 处缺陷）

@@ -168,6 +168,16 @@ quintptr MainWindow::ioThreadId() const
     return m_channel ? m_channel->ioThreadId() : 0;
 }
 
+quint64 MainWindow::engineTicks() const
+{
+    return m_engine ? m_engine->ticks() : 0;
+}
+
+double MainWindow::engineLatency() const
+{
+    return m_engine ? m_engine->lastPollLatencyMs() : 0.0;
+}
+
 void MainWindow::selectTab(int index)
 {
     if (m_tabs) {
@@ -585,9 +595,8 @@ void MainWindow::onConnectClicked()
         }
         m_scanBtn->setEnabled(true);
         m_scanStopBtn->setEnabled(false);
-        m_engine->stop();
-        delete m_engine;
-        m_engine = nullptr;
+        QMetaObject::invokeMethod(m_engine, "stop", Qt::BlockingQueuedConnection);
+        m_engine = nullptr;   // 引擎归通道所有，随通道一起在 I/O 线程销毁
         if (m_csv) {
             m_csv->close();
             if (m_csv->rows() > 0) {
@@ -614,7 +623,7 @@ void MainWindow::onConnectClicked()
         channel = TransportChannel::createTcp(m_hostEdit->text(), static_cast<quint16>(m_portSpin->value()), this);
     }
     m_channel = channel;
-    m_engine = new PollEngine(m_channel, this);
+    m_engine = m_channel->createPollEngine();
     m_engine->setSlave(static_cast<uint8_t>(m_slaveSpin->value()));
     m_engine->setRegisterCount(kRegCount);
     m_engine->setIntervalMs(m_intervalSpin->value());
